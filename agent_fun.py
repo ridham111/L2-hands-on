@@ -1,8 +1,8 @@
-# agent_fun.py — Weekend Wizard Agent (uses Groq instead of Ollama)
+# agent_fun.py — Weekend Wizard Agent (fully local via Ollama)
 #
-# Why Groq? It's free, fast, and doesn't require local GPU/RAM.
-# Get a free key at https://console.groq.com  (no credit card needed)
-# Then set: GROQ_API_KEY=your_key  in a .env file or environment variable.
+# Requires Ollama running locally: https://ollama.com
+# Pull the model first:  ollama pull mistral
+# Then run:              python agent_fun.py
 
 import asyncio, json, sys, os, re
 from typing import Dict, Any, List
@@ -10,32 +10,25 @@ from contextlib import AsyncExitStack
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from groq import Groq
-
-# Load .env file automatically if python-dotenv is installed
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass  # python-dotenv is optional; just set the env var manually
+import ollama
 
 # ─── Configuration ─────────────────────────────────────────────────────────────
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-MODEL        = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-MAX_STEPS    = 8  # safety cap for the agentic loop
+MODEL       = os.environ.get("OLLAMA_MODEL", "mistral")
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+MAX_STEPS   = 8  # safety cap for the agentic loop
 
-if not GROQ_API_KEY:
-    print("\n[ERROR] GROQ_API_KEY is not set.")
-    print("  1. Get a FREE key at: https://console.groq.com")
-    print("  2. Create a file called .env in the weekend-wizard/ folder:")
-    print("       GROQ_API_KEY=gsk_xxxxxxxxxxxx")
-    print("  OR set it as an environment variable:")
-    print("     Windows : set GROQ_API_KEY=gsk_xxxxxxxxxxxx")
-    print("     Mac/Linux: export GROQ_API_KEY=gsk_xxxxxxxxxxxx\n")
+# Verify Ollama is reachable before starting
+_ollama_client = ollama.Client(host=OLLAMA_HOST)
+try:
+    _ollama_client.list()
+except Exception:
+    print(f"\n[ERROR] Cannot connect to Ollama at {OLLAMA_HOST}")
+    print("  1. Install Ollama from: https://ollama.com")
+    print("  2. Start it:  ollama serve")
+    print(f"  3. Pull the model: ollama pull {MODEL}")
+    print("  Then re-run this script.\n")
     sys.exit(1)
-
-groq_client = Groq(api_key=GROQ_API_KEY)
 
 # ─── System Prompt ─────────────────────────────────────────────────────────────
 
@@ -121,13 +114,12 @@ def _extract_json(text: str) -> Dict[str, Any]:
 # ─── LLM Wrappers ──────────────────────────────────────────────────────────────
 
 def _llm_raw(messages: List[Dict[str, str]], temperature: float = 0.2, max_tokens: int = 1024) -> str:
-    resp = groq_client.chat.completions.create(
+    resp = _ollama_client.chat(
         model=MODEL,
         messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
+        options={"temperature": temperature, "num_predict": max_tokens},
     )
-    return resp.choices[0].message.content.strip()
+    return resp["message"]["content"].strip()
 
 
 def llm_json(messages: List[Dict[str, str]]) -> Dict[str, Any]:
@@ -188,9 +180,9 @@ async def main():
     server_path = sys.argv[1] if len(sys.argv) > 1 else "server_fun.py"
 
     print("=" * 50)
-    print("         Weekend Wizard  - Powered by Groq")
+    print("       Weekend Wizard  - Powered by Ollama")
     print("=" * 50)
-    print(f"  Model : {MODEL}")
+    print(f"  Model : {MODEL}  (via {OLLAMA_HOST})")
 
     exit_stack = AsyncExitStack()
     try:
